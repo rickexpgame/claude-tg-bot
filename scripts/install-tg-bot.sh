@@ -30,6 +30,16 @@ yellow(){ printf '\033[0;33m%s\033[0m\n' "$*"; }
 if [ "${1:-}" = "uninstall" ]; then
   echo "Uninstalling Claude TG Bot daemon..."
   launchctl bootout "gui/$UID_NUM/com.claude.tg-bot" 2>/dev/null || true
+  # Kill the daemon process if still running (Terminal may outlive launchd)
+  LOCK_PID_FILE="$HOME/logs/claude-tg-bot.lock/pid"
+  if [ -f "$LOCK_PID_FILE" ]; then
+    OLD_PID=$(cat "$LOCK_PID_FILE" 2>/dev/null || true)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+      echo "Stopping daemon process (PID $OLD_PID)..."
+      kill "$OLD_PID" 2>/dev/null || true
+      sleep 2
+    fi
+  fi
   rm -f "$PLIST_DST"
   rm -rf "$HOME/logs/claude-tg-bot.lock"
   green "Uninstalled. Logs preserved in ~/logs/claude-tg-bot*.log"
@@ -56,7 +66,7 @@ fi
 green "✓ claude CLI: $CLAUDE"
 
 # Check telegram plugin is available
-TG_PLUGIN_DIR=$(find "$HOME/.claude/plugins" -path "*/telegram/server.ts" -type f 2>/dev/null | head -1)
+TG_PLUGIN_DIR=$(find "$HOME/.claude/plugins" -path "*/telegram/server.ts" -type f 2>/dev/null | head -1 || true)
 if [ -z "$TG_PLUGIN_DIR" ]; then
   red "ERROR: Telegram plugin not installed. Install it first:"
   echo "  claude /install telegram@claude-plugins-official"

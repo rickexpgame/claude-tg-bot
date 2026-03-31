@@ -26,6 +26,7 @@ CLAUDE="${CLAUDE_TG_BIN:-$HOME/.local/bin/claude}"
 CHANNELS="${CLAUDE_TG_CHANNELS:-plugin:telegram@claude-plugins-official}"
 SETTINGS="${CLAUDE_TG_SETTINGS:-$SCRIPT_DIR/claude-tg-settings.json}"
 LOG_DIR="${CLAUDE_TG_LOG_DIR:-$HOME/logs}"
+DEBUG="${CLAUDE_TG_DEBUG:-false}"
 LOG_FILE="$LOG_DIR/claude-tg-bot.log"
 LOCK_DIR="$LOG_DIR/claude-tg-bot.lock"
 
@@ -37,6 +38,12 @@ mkdir -p "$LOG_DIR"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"
+}
+
+debug() {
+  if [ "$DEBUG" = "true" ]; then
+    printf '[%s] [DEBUG] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"
+  fi
 }
 
 # --- Log rotation (keep last 3000 lines) ---
@@ -51,6 +58,7 @@ rotate_log() {
 acquire_lock() {
   if mkdir "$LOCK_DIR" 2>/dev/null; then
     echo $$ > "$LOCK_DIR/pid"
+    LOCK_ACQUIRED=true
     return 0
   fi
   # Lock exists — check if holder is still alive
@@ -67,6 +75,7 @@ acquire_lock() {
   rm -rf "$LOCK_DIR"
   if mkdir "$LOCK_DIR" 2>/dev/null; then
     echo $$ > "$LOCK_DIR/pid"
+    LOCK_ACQUIRED=true
     return 0
   fi
   # Another process beat us to reclaim — bail out
@@ -74,8 +83,13 @@ acquire_lock() {
   exit 0
 }
 
+LOCK_ACQUIRED=false
+
 release_lock() {
-  rm -rf "$LOCK_DIR"
+  if [ "$LOCK_ACQUIRED" = true ]; then
+    rm -rf "$LOCK_DIR"
+    LOCK_ACQUIRED=false
+  fi
 }
 
 CLAUDE_PID=""
@@ -84,10 +98,13 @@ trap release_lock EXIT
 trap 'log "SHUTDOWN: received signal"; [ -n "${CLAUDE_PID:-}" ] && kill "$CLAUDE_PID" 2>/dev/null; exit 0' SIGTERM SIGINT SIGHUP
 
 # --- Pre-flight checks ---
-if [ ! -x "$CLAUDE" ] && ! command -v claude &>/dev/null; then
-  echo "ERROR: claude not found at $CLAUDE"
-  sleep 10
-  exit 1
+if [ ! -x "$CLAUDE" ]; then
+  CLAUDE=$(command -v claude 2>/dev/null || true)
+  if [ -z "$CLAUDE" ]; then
+    echo "ERROR: claude not found"
+    sleep 10
+    exit 1
+  fi
 fi
 
 if [ ! -d "$REPO_DIR" ]; then
@@ -101,13 +118,24 @@ acquire_lock
 cd "$REPO_DIR"
 rotate_log
 
-log "DAEMON START: PID $$ | repo=$REPO_DIR | claude=$CLAUDE"
+log "DAEMON START: PID $$ | repo=$REPO_DIR | claude=$CLAUDE | debug=$DEBUG"
+debug "ENV: CHANNELS=$CHANNELS"
+debug "ENV: SETTINGS=$SETTINGS"
+debug "ENV: LOG_DIR=$LOG_DIR"
+debug "ENV: LOCK_DIR=$LOCK_DIR"
+debug "ENV: PATH=$PATH"
+debug "System: $(uname -a)"
+debug "Uptime: $(uptime)"
+debug "Claude version: $("$CLAUDE" --version 2>&1 || echo 'unknown')"
 
 RESTART_COUNT=0
 
 while true; do
   START_TIME=$(date +%s)
   log "START: launching claude (restart #$RESTART_COUNT)"
+  debug "Memory: $(vm_stat 2>/dev/null | head -5 || echo 'unavailable')"
+  debug "Disk: $(df -h "$REPO_DIR" 2>/dev/null | tail -1 || echo 'unavailable')"
+  debug "Network: $(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 https://api.anthropic.com 2>/dev/null || echo 'unreachable')"
 
   "$CLAUDE" --channels "$CHANNELS" \
     --dangerously-skip-permissions \
@@ -118,16 +146,20 @@ while true; do
   END_TIME=$(date +%s)
   DURATION=$((END_TIME - START_TIME))
   log "EXIT: claude exited with code $EXIT_CODE after ${DURATION}s"
+  debug "Exit details: code=$EXIT_CODE duration=${DURATION}s restart_count=$RESTART_COUNT"
 
   # Crash loop detection
   if [ "$DURATION" -lt "$FAST_RESTART_WINDOW" ]; then
     RESTART_COUNT=$((RESTART_COUNT + 1))
+    debug "Fast restart detected: count=$RESTART_COUNT threshold=$MAX_FAST_RESTARTS"
     if [ "$RESTART_COUNT" -ge "$MAX_FAST_RESTARTS" ]; then
       log "ERROR: $MAX_FAST_RESTARTS fast restarts in a row, backing off ${BACKOFF_SECONDS}s"
+      debug "Entering backoff: ${BACKOFF_SECONDS}s sleep"
       sleep "$BACKOFF_SECONDS"
       RESTART_COUNT=0
     fi
   else
+    debug "Normal exit (ran ${DURATION}s > ${FAST_RESTART_WINDOW}s), resetting crash counter"
     RESTART_COUNT=0
   fi
 
