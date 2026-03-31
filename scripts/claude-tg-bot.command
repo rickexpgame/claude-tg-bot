@@ -21,6 +21,8 @@
 #   (pairing codes + allowlist in ~/.claude/channels/telegram/access.json).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Source local .env if present (launchd env vars don't survive `open`)
+[[ -f "$SCRIPT_DIR/.env" ]] && set -a && source "$SCRIPT_DIR/.env" && set +a
 REPO_DIR="${CLAUDE_TG_REPO:-$(dirname "$SCRIPT_DIR")}"
 CLAUDE="${CLAUDE_TG_BIN:-$HOME/.local/bin/claude}"
 CHANNELS="${CLAUDE_TG_CHANNELS:-plugin:telegram@claude-plugins-official}"

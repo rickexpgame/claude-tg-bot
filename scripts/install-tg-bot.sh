@@ -115,8 +115,10 @@ launchctl bootout "gui/$UID_NUM/com.claude.tg-bot" 2>/dev/null || true
 sleep 1
 
 # Template the plist with actual paths
+DEBUG_MODE="${CLAUDE_TG_DEBUG:-false}"
 sed -e "s|__REPO_DIR__|$REPO_DIR|g" \
     -e "s|__HOME__|$HOME|g" \
+    -e "s|__DEBUG__|$DEBUG_MODE|g" \
     "$PLIST_SRC" > "$PLIST_DST"
 
 green "✓ Plist installed: $PLIST_DST"

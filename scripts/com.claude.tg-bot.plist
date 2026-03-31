@@ -24,6 +24,12 @@
     <string>__REPO_DIR__/scripts/claude-tg-bot.command</string>
   </array>
 
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CLAUDE_TG_DEBUG</key>
+    <string>__DEBUG__</string>
+  </dict>
+
   <!-- Start on login -->
   <key>RunAtLoad</key>
   <true/>
