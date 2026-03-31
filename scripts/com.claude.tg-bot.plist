@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Claude Code Telegram Bot — launchd keepalive agent.
+
+  Uses `open .command` to launch in Terminal.app, providing a real TTY.
+  Claude --channels requires a TTY for interactive mode + trust dialog.
+
+  Install:
+    bash scripts/install-tg-bot.sh
+
+  Uninstall:
+    bash scripts/install-tg-bot.sh uninstall
+-->
+<dict>
+  <key>Label</key>
+  <string>com.claude.tg-bot</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/open</string>
+    <string>__REPO_DIR__/scripts/claude-tg-bot.command</string>
+  </array>
+
+  <!-- Start on login -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/logs/claude-tg-bot-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/logs/claude-tg-bot-launchd.log</string>
+</dict>
+</plist>
